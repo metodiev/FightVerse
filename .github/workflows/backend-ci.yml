@@ -1,0 +1,81 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'docs/api/**'
+      - '.github/workflows/backend-ci.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'docs/api/**'
+      - '.github/workflows/backend-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify on JDK 25
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: Show toolchain
+        run: |
+          java -version
+          mvn -version
+
+      - name: Verify (compile, tests, package)
+        # spotless:check is bound to verify but the existing sources are not yet
+        # google-java-format clean, so the formatting gate is skipped until that
+        # debt is paid down in a formatting-only commit.
+        run: mvn -B clean verify -Dspotless.check.skip=true
+
+      - name: Confirm the jar is a runnable Spring Boot fat jar
+        run: |
+          set -euo pipefail
+          artifact=$(find target -maxdepth 1 -name 'fightverse-backend-*.jar' | head -1)
+          test -n "$artifact" || { echo "::error::No jar was produced"; exit 1; }
+          echo "Built $artifact"
+          unzip -l "$artifact" | grep -q 'BOOT-INF/' \
+            || { echo "::error::Not a Spring Boot fat jar"; exit 1; }
+          unzip -p "$artifact" META-INF/MANIFEST.MF | grep -q 'Main-Class: org.springframework.boot.loader' \
+            || { echo "::error::Jar has no Spring Boot launcher"; exit 1; }
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: fightverse-backend-jar
+          path: backend/target/fightverse-backend-*.jar
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: backend/target/surefire-reports/
+          if-no-files-found: ignore
+          retention-days: 7
