@@ -26,9 +26,9 @@ spring:
     # project uses no Flyway placeholders, making this behaviourally equivalent.
     placeholder-replacement: false
   jackson:
+    # Jackson 3 writes java.time values as ISO-8601 by default; SerializationFeature
+    # .WRITE_DATES_AS_TIMESTAMPS no longer exists, so binding it as a property fails startup.
     default-property-inclusion: non_null
-    serialization:
-      write-dates-as-timestamps: false
   mvc:
     problemdetails:
       enabled: true
