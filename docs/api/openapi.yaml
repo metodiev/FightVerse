@@ -1,0 +1,770 @@
+openapi: 3.0.3
+info:
+  title: FightVerse API
+  version: 0.1.0
+  description: |
+    FightVerse backend — identity and the technique catalog.
+
+    All errors use RFC 9457 problem details (`application/problem+json`) with a
+    `type` of `https://api.fightverse.app/problems/<code>`. Every response carries an
+    `X-Request-Id` header; the same value is attached to error payloads as `requestId`
+    so a user can quote it in a bug report.
+
+    Unknown or null fields are omitted from responses (`default-property-inclusion: non_null`).
+servers:
+  - url: http://localhost:8080
+    description: Local development
+tags:
+  - name: Auth
+    description: Registration, login, token refresh and logout.
+  - name: Users
+    description: The authenticated user's own profile.
+  - name: Disciplines
+    description: Martial arts catalog. New disciplines are data, not code.
+  - name: Techniques
+    description: Published techniques and their JSONB evaluation definitions.
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new account
+      description: |
+        Creates an ACTIVE account with the STUDENT role and returns the first token pair.
+        Emails are stored lowercase and trimmed.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Exchange credentials for a token pair
+      description: |
+        A missing account and a wrong password are deliberately indistinguishable: both
+        return 401 with `Invalid credentials.` and take comparable time.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate a refresh token
+      description: |
+        The presented token is revoked and a new pair is issued. Presenting an already
+        revoked token is treated as evidence of theft: every active session for that
+        user is revoked before the request fails with 401.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: A new token pair
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke the caller's refresh token
+      description: |
+        Revokes the supplied refresh token when it belongs to the caller. A token owned by
+        another account is ignored, and the call still succeeds — it is not an oracle for
+        token ownership.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+      responses:
+        '204':
+          description: Revoked (or ignored)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/users/me:
+    get:
+      tags: [Users]
+      summary: The authenticated user's profile
+      responses:
+        '200':
+          description: The current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/disciplines:
+    get:
+      tags: [Disciplines]
+      summary: List active disciplines
+      description: Ordered by `sortOrder`, then `name`.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: A page of disciplines
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisciplinePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Disciplines]
+      summary: Create a discipline
+      description: Requires `ROLE_ADMIN`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDisciplineRequest'
+      responses:
+        '201':
+          description: Discipline created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisciplineResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/disciplines/{code}:
+    get:
+      tags: [Disciplines]
+      summary: Get one active discipline by code
+      description: The code is matched case-insensitively and trimmed.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/DisciplineCode'
+      responses:
+        '200':
+          description: The discipline
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisciplineResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/disciplines/{code}/techniques:
+    post:
+      tags: [Techniques]
+      summary: Create a technique in a discipline
+      description: |
+        Requires `ROLE_ADMIN`. The technique is created as `PUBLISHED`. `definitionSchemaVersion`
+        defaults to 1 when omitted.
+      parameters:
+        - $ref: '#/components/parameters/DisciplineCode'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTechniqueRequest'
+      responses:
+        '201':
+          description: Technique created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TechniqueResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/techniques:
+    get:
+      tags: [Techniques]
+      summary: List published techniques
+      description: |
+        Only `PUBLISHED` techniques are ever returned. Ordered by `name`.
+        Both filters are optional and may be combined.
+      security: []
+      parameters:
+        - name: discipline
+          in: query
+          required: false
+          description: Discipline code; matched case-insensitively.
+          schema:
+            type: string
+            maxLength: 32
+        - name: difficulty
+          in: query
+          required: false
+          description: |
+            One of BEGINNER, INTERMEDIATE, ADVANCED, EXPERT. Parsed leniently:
+            case-insensitive, surrounding whitespace ignored. An unrecognised value
+            is rejected with 400 `invalid-request`.
+          schema:
+            type: string
+            maxLength: 32
+            example: beginner
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: A page of technique summaries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TechniquePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/techniques/{id}:
+    get:
+      tags: [Techniques]
+      summary: Get a published technique
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The technique, including its evaluation definition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TechniqueResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        HS256 access token. The `roles` claim is mapped to `ROLE_`-prefixed authorities,
+        so a `roles: [ADMIN]` claim grants `ROLE_ADMIN`.
+  parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      description: Zero-based page index. Negative values are clamped to 0.
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+        default: 0
+    Size:
+      name: size
+      in: query
+      required: false
+      description: Page size. Clamped to 1..100.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 20
+    DisciplineCode:
+      name: code
+      in: path
+      required: true
+      description: Lowercase kebab-case discipline code, for example `muay-thai`.
+      schema:
+        type: string
+        pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+        maxLength: 32
+  responses:
+    BadRequest:
+      description: |
+        The request was rejected. `type` is one of `validation-failed`,
+        `malformed-request` or `invalid-parameter`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Missing, invalid or expired access token.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+          description: '`Bearer error="invalid_token"` when the token itself was rejected.'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Authenticated but not allowed to perform the action.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: The resource does not exist.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: The request conflicts with existing data.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InternalError:
+      description: An unexpected server error. Details are never disclosed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem detail.
+      properties:
+        type:
+          type: string
+          format: uri
+          example: https://api.fightverse.app/problems/not-found
+        title:
+          type: string
+          example: Resource not found
+        status:
+          type: integer
+          format: int32
+          example: 404
+        detail:
+          type: string
+          example: Technique '9f1c…' was not found.
+        instance:
+          type: string
+          example: /api/v1/techniques/9f1c2b7e-0000-0000-0000-000000000000
+        requestId:
+          type: string
+          description: Correlation id echoed from the `X-Request-Id` header.
+        violations:
+          type: array
+          description: Present on `validation-failed` only.
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                example: email
+              message:
+                type: string
+                example: must be a valid email address
+    RegisterRequest:
+      type: object
+      required: [email, password, displayName]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        password:
+          type: string
+          minLength: 12
+          maxLength: 64
+          description: |
+            Between 12 and 64 characters, and at most 72 bytes when UTF-8 encoded
+            because BCrypt ignores anything past that boundary.
+        displayName:
+          type: string
+          maxLength: 120
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        password:
+          type: string
+          maxLength: 128
+    RefreshTokenRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          maxLength: 512
+    LogoutRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          maxLength: 512
+    TokenResponse:
+      type: object
+      required: [accessToken, tokenType, accessTokenExpiresAt, refreshToken, refreshTokenExpiresAt]
+      properties:
+        accessToken:
+          type: string
+          description: HS256 JWT.
+        tokenType:
+          type: string
+          enum: [Bearer]
+        accessTokenExpiresAt:
+          type: string
+          format: date-time
+        refreshToken:
+          type: string
+          description: 256-bit URL-safe token. Only its SHA-256 is stored, and it is returned once.
+        refreshTokenExpiresAt:
+          type: string
+          format: date-time
+    Role:
+      type: string
+      enum: [STUDENT, INSTRUCTOR, ADMIN]
+    UserStatus:
+      type: string
+      enum: [ACTIVE, PENDING_VERIFICATION, DISABLED]
+    UserResponse:
+      type: object
+      required: [email, displayName, roles, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        createdAt:
+          type: string
+          format: date-time
+    AuthSessionResponse:
+      type: object
+      required: [user, tokens]
+      properties:
+        user:
+          $ref: '#/components/schemas/UserResponse'
+        tokens:
+          $ref: '#/components/schemas/TokenResponse'
+    DisciplineResponse:
+      type: object
+      required: [code, name, sortOrder]
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+        name:
+          type: string
+        description:
+          type: string
+        sortOrder:
+          type: integer
+          format: int32
+    CreateDisciplineRequest:
+      type: object
+      required: [code, name]
+      properties:
+        code:
+          type: string
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+          maxLength: 32
+          description: Lowercase kebab-case, for example `muay-thai`.
+        name:
+          type: string
+          maxLength: 80
+        description:
+          type: string
+          maxLength: 2000
+        sortOrder:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 10000
+          default: 0
+    TechniqueDifficulty:
+      type: string
+      enum: [BEGINNER, INTERMEDIATE, ADVANCED, EXPERT]
+    TechniqueStatus:
+      type: string
+      enum: [DRAFT, PUBLISHED, ARCHIVED]
+    TechniqueSummaryResponse:
+      type: object
+      required: [disciplineCode, code, name, difficulty]
+      properties:
+        id:
+          type: string
+          format: uuid
+        disciplineCode:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        difficulty:
+          $ref: '#/components/schemas/TechniqueDifficulty'
+    TechniqueResponse:
+      type: object
+      description: |
+        A technique plus the JSONB definition that drives pose-based scoring.
+        The optional definition members are omitted when null.
+      required:
+        - disciplineCode
+        - code
+        - name
+        - difficulty
+        - status
+        - definitionSchemaVersion
+        - movementDefinition
+        - requiredLandmarks
+        - evaluationCriteria
+        - version
+      properties:
+        id:
+          type: string
+          format: uuid
+        disciplineCode:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        difficulty:
+          $ref: '#/components/schemas/TechniqueDifficulty'
+        status:
+          $ref: '#/components/schemas/TechniqueStatus'
+        definitionSchemaVersion:
+          type: integer
+          format: int32
+          minimum: 1
+        movementDefinition:
+          type: object
+          description: Phased movement description, for example GUARD → EXTENSION → RETRACTION.
+          additionalProperties: true
+        requiredLandmarks:
+          type: array
+          description: Pose landmarks the analyzer needs to see.
+          items:
+            type: string
+        evaluationCriteria:
+          type: array
+          description: Scored checks with weights and ideal values.
+          items:
+            type: object
+            required: [code, weight]
+            properties:
+              code:
+                type: string
+                example: ELBOW_EXTENSION
+              weight:
+                type: number
+                format: double
+              metric:
+                type: string
+                example: JOINT_ANGLE
+              landmarks:
+                type: array
+                items:
+                  type: string
+              ideal:
+                type: object
+                additionalProperties: true
+              description:
+                type: string
+            additionalProperties: true
+        scoringRules:
+          type: object
+          additionalProperties: true
+        analyzerConfig:
+          type: object
+          additionalProperties: true
+        version:
+          type: integer
+          format: int64
+          description: Optimistic-locking version.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateTechniqueRequest:
+      type: object
+      required:
+        - code
+        - name
+        - difficulty
+        - movementDefinition
+        - requiredLandmarks
+        - evaluationCriteria
+      properties:
+        code:
+          type: string
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+          maxLength: 64
+          description: Lowercase kebab-case, unique within the discipline.
+        name:
+          type: string
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 2000
+        difficulty:
+          $ref: '#/components/schemas/TechniqueDifficulty'
+        definitionSchemaVersion:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 1000
+          default: 1
+        movementDefinition:
+          type: object
+          additionalProperties: true
+        requiredLandmarks:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        evaluationCriteria:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: true
+        scoringRules:
+          type: object
+          additionalProperties: true
+        analyzerConfig:
+          type: object
+          additionalProperties: true
+    DisciplinePage:
+      type: object
+      required: [content, page, size, totalElements, totalPages]
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/DisciplineResponse'
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    TechniquePage:
+      type: object
+      required: [content, page, size, totalElements, totalPages]
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/TechniqueSummaryResponse'
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
