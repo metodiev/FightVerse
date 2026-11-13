@@ -1,5 +1,7 @@
 # FightVerse
 
+[![Backend CI](https://github.com/metodiev/FightVerse/actions/workflows/backend-ci.yml/badge.svg?branch=main)](https://github.com/metodiev/FightVerse/actions/workflows/backend-ci.yml)
+
 Modular-monolith backend for the FightVerse martial-arts platform.
 
 ## Layout
@@ -48,7 +50,8 @@ Configuration is environment-driven — see `backend/src/main/resources/applicat
 | `integration/PostgresSmokeTest` | Flyway + Hibernate + BCrypt + JWT against a real PostgreSQL container |
 
 `PostgresSmokeTest` requires Docker and **skips** (rather than fails) when no daemon is available, so a
-green run without Docker does not mean the database path has been verified.
+green local run without Docker does not mean the database path has been verified. CI runs on
+`ubuntu-latest`, which has a Docker daemon, so there the suite executes against a real PostgreSQL 17.
 
 ## API
 
@@ -57,7 +60,7 @@ classpath so `OpenApiContractTest` can assert that controllers still match it.
 
 ## Content
 
-Reference data is seeded by migration, not code:
+Schema and reference data are seeded by migration, not code (`V1`-`V8`):
 
 - 8 disciplines (`V6__seed_disciplines.sql`)
 - 3 boxing techniques — jab, cross, guard recovery (`V7__seed_boxing_techniques.sql`)
