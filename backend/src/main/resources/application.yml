@@ -20,6 +20,11 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+    # The seed migrations embed JSON documents in $json$ ... $json$ dollar-quoted literals, and a
+    # literal is immediately followed by its opening brace, producing "${" sequences. Flyway reads
+    # those as placeholders and refuses to parse the migration, so replacement is disabled. The
+    # project uses no Flyway placeholders, making this behaviourally equivalent.
+    placeholder-replacement: false
   jackson:
     default-property-inclusion: non_null
     serialization:
